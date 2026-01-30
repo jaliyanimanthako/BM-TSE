@@ -31,8 +31,8 @@ class Config_cocktail_party:
 class Config_KUL:
     def __init__(self):
         # Dataloader essential
-        self.root = 'kul dataset root'
-        self.subject = '1'  # Initial subject value
+        self.root = '/home/jaliya/chiposb/Nureoheed/'
+        self.subject = 'S1'  # Initial subject value
         
         # EEG settings
         self.num_channels = 64
