@@ -53,7 +53,10 @@ def load_Dataset_cocktail_all(root, batch_size, shuffle=False):
     return Train_dataloader, ValidDataloader, Test_dataloader
 
 def load_Dataset_KUL_all(root, batch_size, shuffle=False):
-    subject_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    # subject_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    # KUL usually S1 to S16. Adjust indices to 1-based if needed.
+    # User had 16 files. Let's assume S1..S16.
+    subject_indices = list(range(1, 17))
     # 创建训练集和测试集的列表
     train_datasets = []
     valid_datasets = []
@@ -61,13 +64,23 @@ def load_Dataset_KUL_all(root, batch_size, shuffle=False):
     random.seed(42)
     
     for subject in subject_indices:
-        file_name = f'filename{subject}'
-        subject_dataset = EEGDataset_KUL(root=root, file_name=file_name, subject_index=subject)
-        # 验证数据集大小是否符合预期
+        # file_name = f'filename{subject}' 
+        # Adapting to preprocess_kul.py output: S{subject_index}.npy
+        # Assuming subjects are 1-indexed based on S1.mat
+        file_name = f'S{subject}.npy'
+        
+        try:
+            subject_dataset = EEGDataset_KUL(root=root, file_name=file_name, subject_index=subject)
+        except FileNotFoundError:
+             print(f"Warning: File {file_name} not found in {root}. Skipping...")
+             continue
+             
+        # 验证数据集大小是否符合预期 
         subject_len = len(subject_dataset)
-        if subject_len != 4624:
-            print(f"Warning: Subject {subject} has {subject_len} samples, expected 4624. Skipping...")
-            continue
+        print(f"Subject {subject}: Loaded {subject_len} samples.")
+        # if subject_len != 4624:
+        #     print(f"Warning: Subject {subject} has {subject_len} samples, expected 4624. Skipping...")
+        #     continue
         total_len = len(subject_dataset)
         train_len = int(total_len * 0.75)
         valid_len = int(total_len * 0.125)

@@ -426,13 +426,21 @@ def evaluate_model(test_dataloader, config):
     return loss_meter.avg, sisdri_meter.avg, subject_acc_meter.avg, aad_acc_meter.avg, stoi_meter.avg, estoi_meter.avg, pesq_meter.avg
 
 if __name__ == "__main__":
-    config = Config_cocktail_party()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='KUL', choices=['cocktail', 'KUL'], help='Dataset to use (cocktail/KUL)')
+    args = parser.parse_args()
+
+    if args.dataset == 'KUL':
+        config = Config_KUL()
+    elif args.dataset == 'cocktail':
+        config = Config_cocktail_party()
+    
     # model = main(config) # main 函数返回模型实例，这里不需要再次赋值
 
     # You can now proceed with training or evaluation, for example:
     # from torch.utils.data import DataLoader
     print(torch.cuda.is_available())
-    train_loader, valid_loader, test_loader = get_data_loaders("cocktail", config=config)
+    train_loader, valid_loader, test_loader = get_data_loaders(args.dataset, config=config)
 
     train_model(train_loader, valid_loader, config) # 训练模型
     evaluate_model(test_loader, config) # 评估模型
