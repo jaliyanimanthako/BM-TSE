@@ -120,6 +120,10 @@ def main(args):
         trials = mat_data['trials'].reshape(-1) # Flatten to 1D array of trials
         
         print(f"Processing {len(trials)} trials in {filename}...")
+        
+        all_eeg_segments = []
+        all_audio_segments = []
+        all_labels = []
 
         for i, trial in enumerate(trials):
             # trial is a numpy element (void). Access fields by name.
@@ -141,6 +145,10 @@ def main(args):
             if eeg is None:
                 print(f"Skipping trial {i}: EEG not found in RawData.")
                 continue
+            
+            # Unwrap nested arrays (often happens with mat files)
+            while eeg.size == 1 and isinstance(eeg.flat[0], np.ndarray):
+                eeg = eeg.flat[0]
             
             print(f"  Trial {i}: EEG Shape raw: {eeg.shape}")
             
