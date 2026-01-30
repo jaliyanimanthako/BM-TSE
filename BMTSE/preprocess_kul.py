@@ -141,6 +141,13 @@ def main(args):
             if eeg is None:
                 print(f"Skipping trial {i}: EEG not found in RawData.")
                 continue
+            
+            print(f"  Trial {i}: EEG Shape raw: {eeg.shape}")
+            
+            # Check for minimal length
+            if max(eeg.shape) < 100:
+                print(f"Skipping trial {i}: EEG data too short ({max(eeg.shape)} samples).")
+                continue
                 
             # --- 2. Extract Audio Filenames ---
             stimuli = get_field(trial, 'stimuli')
