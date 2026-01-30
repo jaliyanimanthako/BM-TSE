@@ -112,105 +112,182 @@ def main(args):
         # Common KUL keys: 'trials', 'data', 'subject'
         # Trying to guess standard structure or look for likely candidates
         
-        # Placeholder for extraction logic. 
-        # We assume a structure where we can iterate over trials.
-        # For KUL dataset (typically):
-        # mat_data['trials'] is a struct array.
-        
-        # Heuristic to find the main data structure
-        possible_keys = [k for k in mat_data.keys() if not k.startswith('__')]
-        if len(possible_keys) == 0:
-            print(f"Skipping {filename}: No data keys found.")
+        # Get trials array
+        if 'trials' not in mat_data:
+            print(f"Skipping {filename}: 'trials' key not found.")
             continue
             
-        print(f"Keys in {filename}: {possible_keys}")
+        trials = mat_data['trials'].reshape(-1) # Flatten to 1D array of trials
         
-        # User Logic: Iterate trials
-        # This part heavily depends on the specific MAT structure.
-        # We will assume 'trials' exists or use the first available key.
-        data_struct = mat_data[possible_keys[0]] 
-        
-        # Assuming structure: data_struct is a dictionary or structured array
-        # This loop is generic; USER MUST VERIFY
-        
-        all_eeg_segments = []
-        all_audio_segments = [] # Should contain [AudioA, AudioB]
-        all_labels = []   # 0 or 1
-        
-        # Hardcoded constraints
-        EEG_FS_RAW = 8192 # Example assumption, user must verify
-        # If sampling rate is in the file, load it.
-        if 'fs' in mat_data:
-            EEG_FS_RAW = float(mat_data['fs'][0][0])
+        print(f"Processing {len(trials)} trials in {filename}...")
+
+        for i, trial in enumerate(trials):
+            # trial is a numpy element (void). Access fields by name.
+            # Helper to safely get field
+            def get_field(struct, field):
+                if field in struct.dtype.names:
+                    return struct[field]
+                return None
             
-        # Example processing loop (Assuming 'trials' list structure)
-        # You might need to change this loop if your data is just one big array.
-        
-        # --- DEMO / PLACEHOLDER LOOP ---
-        # Modify below to match your structure.
-        # Example: assuming 'trials' has 'eeg', 'stimuli_name', 'attention_label'
-        
-        # If we cannot parse, we warn.
-        print(f"WARNING: Script needs to be tailored to internal MAT structure. Inspecting {filename}...")
-        
-        # Simulated extraction for the script to be valid python
-        # Replace this block with actual extraction logic
-        continue_processing = False # Set to true if you implement extraction
-        
-        if not continue_processing:
-            print(f"Please inspect {filename} and update the extraction logic in lines 100-150.")
-            print("Skipping processing for now to avoid errors.")
-            continue
+            # --- 1. Extract EEG ---
+            # Try RawData -> EegData
+            raw_data = get_field(trial, 'RawData')
+            eeg = None
+            if raw_data is not None and raw_data.size > 0:
+                inner = raw_data[0,0] if raw_data.ndim > 1 else raw_data.flat[0]
+                if 'EegData' in inner.dtype.names:
+                    eeg = inner['EegData'] # Shape (Channels, Time) or (Time, Channels)
 
-        # --- END PLACEHOLDER ---
+            if eeg is None:
+                print(f"Skipping trial {i}: EEG not found in RawData.")
+                continue
+                
+            # --- 2. Extract Audio Filenames ---
+            stimuli = get_field(trial, 'stimuli')
+            audio_files = [] # [PathA, PathB]
+            if stimuli is not None and stimuli.size > 0:
+                inner_stim = stimuli[0,0] if stimuli.ndim > 1 else stimuli.flat[0]
+                # Assuming fields are like 'AudioA', 'AudioB' or checking values
+                # KUL dataset often has varying field names or just values.
+                # Let's collect all string values in stimuli struct
+                for name in inner_stim.dtype.names:
+                     val = inner_stim[name]
+                     if val.size > 0:
+                         str_val = str(val[0]) if isinstance(val[0], (str, np.str_)) else ""
+                         if len(str_val) == 0 and val.dtype.kind in 'SU': # String or Unicode
+                              str_val = str(val.flat[0])
+                         
+                         if str_val.endswith('.wav'):
+                             audio_files.append(str_val)
+            
+            # Sort to ensure order (usually Stream A then Stream B)
+            # Or reliance on specific keys if known. For now, sorting assumes naming convention.
+            audio_files = sorted(audio_files) 
+            
+            if len(audio_files) < 2:
+                print(f"Skipping trial {i}: Found {len(audio_files)} audio files, needed 2.")
+                continue
+                
+            # --- 3. Extract Label ---
+            # attended_ear: 'R' or 'L' or 0/1
+            attended_ear = get_field(trial, 'attended_ear')
+            label = 0 # Default
+            if attended_ear is not None and attended_ear.size > 0:
+                val = attended_ear.flat[0]
+                if isinstance(val, (str, np.str_)):
+                     # Assume 'L' = 0 (left), 'R' = 1 (right) or dependent on audio order
+                     # If audio files are [TrackA, TrackB], we need to know which one was attended.
+                     # Usually KUL provides 'attended_track' ?
+                     pass
+                elif isinstance(val, (int, float, np.number)):
+                     label = int(val) 
+            
+            # Trying 'attended_track' if available (more reliable for A vs B)
+            attended_track = get_field(trial, 'attended_track') 
+            if attended_track is not None and attended_track.size > 0:
+                 try:
+                     val_str = str(attended_track.flat[0])
+                     # If matches first audio file -> 0, else 1
+                     if val_str in audio_files[0]:
+                         label = 0
+                     elif val_str in audio_files[1]:
+                         label = 1
+                 except:
+                     pass
 
-        # Once you have:
-        # raw_eeg (Time, Channels)
-        # audio_file_path_A
-        # audio_file_path_B
-        # label (0 or 1)
-        
-        # 1. Process EEG
-        # processed_eeg = preprocess_eeg(raw_eeg, EEG_FS_RAW) # -> (64, Time_128Hz)
+            # --- PROCESS DATA ---
+            
+            # 1. Process EEG
+            # EEG FS is usually in RawData header or known.
+            EEG_FS_RAW = 128.0 # If already downsampled? Or 8192?
+            # KUL standard raw is often high, but let's assume raw was passed here. 
+            # Ideally try to read fs from struct.
+            
+            processed_eeg = preprocess_eeg(eeg, EEG_FS_RAW) # -> (64, Time)
+            processed_eeg = processed_eeg.astype(np.float32)
 
-        # 2. Load and Process Audio
-        # wavA, srA = torchaudio.load(os.path.join(args.stimuli_dir, audio_file_path_A))
-        # wavB, srB = torchaudio.load(os.path.join(args.stimuli_dir, audio_file_path_B))
-        
-        # Resample to 16k
-        # resampler = torchaudio.transforms.Resample(srA, 16000)
-        # wavA = resampler(wavA)
-        # wavB = resampler(wavB)
-        
-        # Normalize
-        # wavA = normalize_audio(wavA)
-        # wavB = normalize_audio(wavB)
-        
-        # 3. Segment into 1s windows
-        # win_eeg = 128
-        # win_audio = 16000
-        # n_wins = processed_eeg.shape[1] // win_eeg
-        
-        # for i in range(n_wins):
-        #     eeg_seg = processed_eeg[:, i*win_eeg : (i+1)*win_eeg]
-        #     aud_segA = wavA[:, i*win_audio : (i+1)*win_audio]
-        #     aud_segB = wavB[:, i*win_audio : (i+1)*win_audio]
-        #     
-        #     # Stack Audio (2, 16000)
-        #     aud_stacked = torch.cat([aud_segA, aud_segB], dim=0)
-        #
-        #     all_eeg_segments.append(eeg_seg)
-        #     all_audio_segments.append(aud_stacked.numpy())
-        #     all_labels.append(label)
+            # 2. Process Audio
+            wavs = []
+            for af in audio_files[:2]:
+                 path = os.path.join(args.stimuli_dir, af)
+                 if not os.path.exists(path):
+                     print(f"Warning: Audio file not found {path}")
+                     # Try finding mostly matching file?
+                     basename = os.path.basename(af)
+                     path = os.path.join(args.stimuli_dir, basename)
+                 
+                 if os.path.exists(path):
+                     w, sr = torchaudio.load(path)
+                     # Resample
+                     if sr != 16000:
+                         w = torchaudio.transforms.Resample(sr, 16000)(w)
+                     
+                     # Normalize (Ref: "mix them 0 db")
+                     w = normalize_audio(w)
+                     wavs.append(w)
+                 else:
+                     wavs.append(torch.zeros(1, 16000)) # Dummy if missing
 
-        # 4. Save
-        # eeg_final = np.array(all_eeg_segments)
-        # audio_final = np.array(all_audio_segments)
-        # labels_final = np.array(all_labels)
+            if len(wavs) < 2: continue
+            
+            wavA = wavs[0]
+            wavB = wavs[1]
+            
+            # Truncate to min length
+            min_len = min(wavA.shape[1], wavB.shape[1])
+            wavA = wavA[:, :min_len]
+            wavB = wavB[:, :min_len]
+            
+            # Align EEG
+            # EEG time = audio time
+            # audio len / 16000 = seconds
+            # eeg len / 128 = seconds
+            # Crop to match the shorter duration
+            dur_audio = min_len / 16000.0
+            dur_eeg = processed_eeg.shape[1] / 128.0
+            dur = min(dur_audio, dur_eeg)
+            
+            eeg_samples = int(dur * 128)
+            audio_samples = int(dur * 16000)
+            
+            processed_eeg = processed_eeg[:, :eeg_samples]
+            wavA = wavA[:, :audio_samples]
+            wavB = wavB[:, :audio_samples]
 
-        # save_path = os.path.join(args.output_dir, f"{subject_name}.npy")
-        # np.savez(save_path, eeg=eeg_final, audio=audio_final, ear=labels_final)
-        # print(f"Saved {save_path}")
+            # 3. Segment into 1s windows
+            win_eeg = 128
+            win_audio = 16000
+            n_wins = int(dur) # Full seconds only
+            
+            for w_idx in range(n_wins):
+                eeg_seg = processed_eeg[:, w_idx*win_eeg : (w_idx+1)*win_eeg]
+                aud_segA = wavA[:, w_idx*win_audio : (w_idx+1)*win_audio]
+                aud_segB = wavB[:, w_idx*win_audio : (w_idx+1)*win_audio]
+                
+                # Stack Audio (2, 16000)
+                aud_stacked = torch.cat([aud_segA, aud_segB], dim=0)
+    
+                all_eeg_segments.append(eeg_seg)
+                all_audio_segments.append(aud_stacked.numpy())
+                all_labels.append(label)
+
+        if len(all_eeg_segments) > 0:
+            # 4. Save
+            eeg_final = np.array(all_eeg_segments)
+            audio_final = np.array(all_audio_segments)
+            labels_final = np.array(all_labels)
+    
+            save_path = os.path.join(args.output_dir, f"{filename}.npy")
+            # Usually we remove .mat extension
+            save_path = os.path.join(args.output_dir, f"{subject_name}.npy")
+            
+            # Save as dictionary
+            np.savez(save_path, eeg=eeg_final, audio=audio_final, ear=labels_final)
+            print(f"Saved {save_path}: EEG {eeg_final.shape}, Audio {audio_final.shape}")
+        else:
+            print(f"No valid segments found for {filename}")
+
+        continue # Finished this file
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Preprocess KUL Dataset to .npy format')
