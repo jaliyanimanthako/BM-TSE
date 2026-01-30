@@ -248,7 +248,7 @@ def main(args):
                      basename = os.path.basename(af)
                      path = os.path.join(args.stimuli_dir, basename)
                  
-def load_audio_robust(path, target_sr=16000):
+                 if os.path.exists(path):
     try:
         # Try torchaudio first
         # Force backend if needed, but let's just try-catch
