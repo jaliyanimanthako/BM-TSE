@@ -21,23 +21,32 @@ def inspect_mat(file_path):
         print(f"Type of 'trials': {type(trials)}")
         print(f"Shape of 'trials': {trials.shape}")
         
-        # Access the first element to see fields
-        if hasattr(trials, 'dtype'):
-             print("\nFields in 'trials' (scipy.io):")
+        # Check if it's an object array (common for structs in scipy.io)
+        if trials.dtype.names is None:
+            print("Array does not have fields at top level. checking elements...")
+            if trials.size > 0:
+                first_elem = trials.flat[0]
+                print(f"Type of first element: {type(first_elem)}")
+                
+                if hasattr(first_elem, 'dtype') and first_elem.dtype.names:
+                    print(f"Fields found in first trial: {first_elem.dtype.names}")
+                    
+                    for name in first_elem.dtype.names:
+                        val = first_elem[name]
+                        shape_info = val.shape if hasattr(val, 'shape') else 'scalar'
+                        print(f"  {name}: {shape_info} (Type: {type(val)})")
+                else:
+                    print("First element does not have named fields.")
+                    print(first_elem)
+        else:
              names = trials.dtype.names
-             print(names)
+             print(f"Fields in 'trials': {names}")
              
-             # Print details of first trial
              if trials.size > 0:
                  first_trial = trials[0,0] if trials.ndim > 1 else trials[0]
-                 print("\nContent types in first trial:")
                  for name in names:
                      val = first_trial[name]
-                     print(f"  {name}: {type(val)} - Shape: {val.shape if hasattr(val, 'shape') else 'scalar'}")
-        else:
-            # h5py structure
-            print("\nKeys in 'trials' (h5py group):")
-            print(list(trials.keys()))
+                     print(f"  {name}: {val.shape if hasattr(val, 'shape') else 'scalar'}")
             
     else:
         print("'trials' key not found.")
