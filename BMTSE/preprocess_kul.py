@@ -147,18 +147,35 @@ def main(args):
             audio_files = [] # [PathA, PathB]
             if stimuli is not None and stimuli.size > 0:
                 inner_stim = stimuli[0,0] if stimuli.ndim > 1 else stimuli.flat[0]
-                # Assuming fields are like 'AudioA', 'AudioB' or checking values
-                # KUL dataset often has varying field names or just values.
-                # Let's collect all string values in stimuli struct
-                for name in inner_stim.dtype.names:
-                     val = inner_stim[name]
-                     if val.size > 0:
-                         str_val = str(val[0]) if isinstance(val[0], (str, np.str_)) else ""
-                         if len(str_val) == 0 and val.dtype.kind in 'SU': # String or Unicode
-                              str_val = str(val.flat[0])
-                         
-                         if str_val.endswith('.wav'):
-                             audio_files.append(str_val)
+                
+                # Check if we have named fields
+                if hasattr(inner_stim, 'dtype') and inner_stim.dtype.names is not None:
+                    for name in inner_stim.dtype.names:
+                         val = inner_stim[name]
+                         if val.size > 0:
+                             str_val = str(val[0]) if isinstance(val[0], (str, np.str_)) else ""
+                             if len(str_val) == 0 and val.dtype.kind in 'SU': # String or Unicode
+                                  str_val = str(val.flat[0])
+                             
+                             if str_val.endswith('.wav'):
+                                 audio_files.append(str_val)
+                else:
+                    # No named fields, might be an array of strings/objects
+                    # Iterate over flat elements if they look like strings
+                    if inner_stim.size > 0:
+                        flat_stim = inner_stim.flatten()
+                        for item in flat_stim:
+                            str_val = ""
+                            if isinstance(item, (str, np.str_)):
+                                str_val = str(item)
+                            elif isinstance(item, np.ndarray) and item.size > 0:
+                                # Sometimes it's nested array of strings
+                                sub_item = item.flat[0]
+                                if isinstance(sub_item, (str, np.str_)):
+                                    str_val = str(sub_item)
+                            
+                            if str_val.endswith('.wav'):
+                                audio_files.append(str_val)
             
             # Sort to ensure order (usually Stream A then Stream B)
             # Or reliance on specific keys if known. For now, sorting assumes naming convention.
