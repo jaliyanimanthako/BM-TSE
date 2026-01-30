@@ -248,11 +248,50 @@ def main(args):
                      basename = os.path.basename(af)
                      path = os.path.join(args.stimuli_dir, basename)
                  
+def load_audio_robust(path, target_sr=16000):
+    try:
+        # Try torchaudio first
+        # Force backend if needed, but let's just try-catch
+        w, sr = torchaudio.load(path)
+    except Exception as e:
+        print(f"Torchaudio failed for {path}: {e}. Trying scipy...")
+        try:
+            import scipy.io.wavfile
+            sr, w = scipy.io.wavfile.read(path)
+            w = torch.tensor(w.copy(), dtype=torch.float32)
+            # Scipy returns (Time, Channels) usually, torchaudio returns (Channels, Time)
+            if w.ndim == 1:
+                w = w.unsqueeze(0) # (1, Time)
+            else:
+                w = w.t() # (Channels, Time)
+            
+            # Scipy is int16 usually, normalize to float -1..1
+            if w.abs().max() > 1.0:
+                 w = w / 32768.0
+                 
+        except Exception as e2:
+             print(f"Scipy failed too: {e2}")
+             return None, None
+
+    # Resample if needed
+    if sr != target_sr:
+        try:
+            resampler = torchaudio.transforms.Resample(sr, target_sr)
+            w = resampler(w)
+        except:
+             # Fallback resampling if torch transform fails (e.g. backend issues)
+             import scipy.signal
+             num_samples = int(w.shape[1] * float(target_sr) / sr)
+             w_np = scipy.signal.resample(w.numpy(), num_samples, axis=1)
+             w = torch.tensor(w_np)
+             
+    return w, target_sr
+
+# ... inside loop ...
                  if os.path.exists(path):
-                     w, sr = torchaudio.load(path)
-                     # Resample
-                     if sr != 16000:
-                         w = torchaudio.transforms.Resample(sr, 16000)(w)
+                     w, _ = load_audio_robust(path, target_sr=16000)
+                     if w is None:
+                         w = torch.zeros(1, 16000) # Dummy
                      
                      # Normalize (Ref: "mix them 0 db")
                      w = normalize_audio(w)
