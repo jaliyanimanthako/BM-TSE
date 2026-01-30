@@ -70,9 +70,13 @@ def load_Dataset_KUL_all(root, batch_size, shuffle=False):
         file_name = f'S{subject}.npy'
         
         try:
+            # Debug: Print full path
+            full_path = os.path.join(root, file_name)
+            # print(f"Checking for {full_path}")
+            
             subject_dataset = EEGDataset_KUL(root=root, file_name=file_name, subject_index=subject)
         except FileNotFoundError:
-             print(f"Warning: File {file_name} not found in {root}. Skipping...")
+             print(f"Warning: File {file_name} not found in {root} (Full: {full_path}). Skipping...")
              continue
              
         # 验证数据集大小是否符合预期 
