@@ -349,7 +349,7 @@ def main(args):
     
             save_path = os.path.join(args.output_dir, f"{filename}.npy")
             # Usually we remove .mat extension
-            save_path = os.path.join(args.output_dir, f"{subject_name}.npy")
+            save_path = os.path.join(args.output_dir, f"{subject_name}")
             
             # Save as dictionary
             np.savez(save_path, eeg=eeg_final, audio=audio_final, ear=labels_final)

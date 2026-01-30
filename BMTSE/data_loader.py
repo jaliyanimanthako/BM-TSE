@@ -66,9 +66,9 @@ def load_Dataset_KUL_all(root, batch_size, shuffle=False):
     
     for subject in subject_indices:
         # file_name = f'filename{subject}' 
-        # Adapting to preprocess_kul.py output: S{subject_index}.npy
+        # Adapting to preprocess_kul.py output: S{subject_index}.npz
         # Assuming subjects are 1-indexed based on S1.mat
-        file_name = f'S{subject}.npy'
+        file_name = f'S{subject}.npz'
         
         try:
             # Debug: Print full path
