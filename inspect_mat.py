@@ -47,6 +47,17 @@ def inspect_mat(file_path):
                  for name in names:
                      val = first_trial[name]
                      print(f"  {name}: {val.shape if hasattr(val, 'shape') else 'scalar'}")
+                     
+                     # Deep dive into RawData and stimuli
+                     if name in ['RawData', 'stimuli'] and val.size > 0:
+                         print(f"    -> Inspecting {name}:")
+                         inner = val[0,0] if val.ndim > 1 else val.flat[0]
+                         if hasattr(inner, 'dtype') and inner.dtype.names:
+                             for inner_name in inner.dtype.names:
+                                 inner_val = inner[inner_name]
+                                 print(f"       {inner_name}: {inner_val.shape if hasattr(inner_val, 'shape') else 'scalar'}")
+                                 if inner_name == 'EegData':
+                                     print(f"       (EegData shape: {inner_val.shape})")
             
     else:
         print("'trials' key not found.")
